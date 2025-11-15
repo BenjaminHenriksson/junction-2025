@@ -9,8 +9,11 @@ from google.genai import types
 
 import psycopg
 db_name = os.getenv("DB_NAME")
+# Keep a long-lived connection for multiple inserts; enable autocommit so we don't
+# need an explicit transaction block for each write.
 conn = psycopg.connect(
-    f"dbname={db_name} user=postgres host=localhost password=qwerty"
+    f"dbname={db_name} user=postgres host=localhost password=qwerty",
+    autocommit=True,
 )
 
 class product:
@@ -20,26 +23,57 @@ class product:
         self.embedding = None
     
     def create_embedding_string(self) -> str:
-        vendorName = self.product_data["vendorName"]
-        countryOfOrigin = self.product_data["countryOfOrigin"]
-        name = self.product_data["synkkaData"]["names"][0]["value"]
-        marketingText = self.product_data["synkkaData"]["marketingTexts"][0]["value"]
-        keyIngredients = self.product_data["synkkaData"]["keyIngredients"][0]["value"]
-        netWeight = self.product_data["synkkaData"]["unitConversions"][0]["netWeight"]["value"]
+        # Top-level fields – use .get so missing keys don't explode
+        vendorName = self.product_data.get("vendorName")
+        countryOfOrigin = self.product_data.get("countryOfOrigin")
 
-        allergens = [classification["values"] for classification in self.product_data["synkkaData"]["classifications"] if classification["name"] == "allergen"][0]
+        synkka = self.product_data.get("synkkaData", {})
 
-        if len(allergens) > 0:
+        # Helper to safely get the first item's "value" from a list field
+        def first_value(list_key: str):
+            items = synkka.get(list_key) or []
+            if not items:
+                return None
+            first = items[0]
+            if isinstance(first, dict):
+                return first.get("value")
+            return None
+
+        name = first_value("names")
+        marketingText = first_value("marketingTexts")
+        keyIngredients = first_value("keyIngredients")
+
+        # Net weight is nested a bit differently
+        unit_conversions = synkka.get("unitConversions") or []
+        netWeight = None
+        if unit_conversions:
+            uc0 = unit_conversions[0]
+            if isinstance(uc0, dict):
+                net = uc0.get("netWeight") or {}
+                if isinstance(net, dict):
+                    netWeight = net.get("value")
+
+        # Classifications can contain allergens and nutritional claims
+        classifications = synkka.get("classifications") or []
+
+        allergen_value_lists = [
+            classification.get("values") or []
+            for classification in classifications
+            if classification.get("name") == "allergen"
+        ]
+        allergens = allergen_value_lists[0] if allergen_value_lists else []
+
+        if allergens:
             print(type(allergens))
             print(allergens)
-            allergens_string = "; ".join([f"{allergen['id']}" for allergen in allergens])
+            allergens_string = "; ".join(allergen["id"] for allergen in allergens if "id" in allergen)
         else:
-            allergens_string = "No allergens."
+            allergens_string = None  # omit from embedding string if missing
 
         nutritionalClaims_matches = [
-            classification["values"]
-            for classification in self.product_data["synkkaData"]["classifications"]
-            if classification["name"] == "nutritionalClaim"
+            classification.get("values") or []
+            for classification in classifications
+            if classification.get("name") == "nutritionalClaim"
         ]
 
         # `classification["values"]` is itself a list of dicts, so we need the first match's values
@@ -48,11 +82,32 @@ class product:
             nutritionalClaims_string = "; ".join(
                 f"{nutritionalClaim['id']}".replace("_", " ").lower()
                 for nutritionalClaim in nutritionalClaims
+                if "id" in nutritionalClaim
             )
         else:
-            nutritionalClaims_string = "No nutritional claims."
+            nutritionalClaims_string = None  # omit from embedding string if missing
 
-        return f"Name: {name}; Net weight: {netWeight} kg; Marketing Text: {marketingText}; Vendor: {vendorName}; Country of Origin: {countryOfOrigin}; Key Ingredients: {keyIngredients}; Allergens: {allergens_string}; Nutritional Claims: {nutritionalClaims_string}."
+        # Build the embedding string only from fields that are actually present
+        parts: list[str] = []
+
+        if name:
+            parts.append(f"Name: {name}")
+        if netWeight is not None:
+            parts.append(f"Net weight: {netWeight} kg")
+        if marketingText:
+            parts.append(f"Marketing Text: {marketingText}")
+        if vendorName:
+            parts.append(f"Vendor: {vendorName}")
+        if countryOfOrigin:
+            parts.append(f"Country of Origin: {countryOfOrigin}")
+        if keyIngredients:
+            parts.append(f"Key Ingredients: {keyIngredients}")
+        if allergens_string:
+            parts.append(f"Allergens: {allergens_string}")
+        if nutritionalClaims_string:
+            parts.append(f"Nutritional Claims: {nutritionalClaims_string}")
+
+        return "; ".join(parts) + "."
 
     def get_embedding(self) -> list[float]:
         embedding_string = self.create_embedding_string()
@@ -74,10 +129,26 @@ class product:
         if self.embedding is None:
             self.get_embedding()
 
-        with conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "INSERT INTO embeddings (gtin, embedding) VALUES (%s, %s)",
-                    (self.product_data["synkkaData"]["gtin"], self.embedding.tolist())     # Important: convert numpy array → Python list
-                )
-        print(f"Embedding written to database for product {self.product_data['synkkaData']['gtin']}, with embedding: {self.embedding}")
+        # Safely resolve GTIN; prefer salesUnitGtin, fall back to Synkka GTINs
+        synkka = self.product_data.get("synkkaData", {})
+        gtin = (
+            self.product_data.get("salesUnitGtin")
+            or synkka.get("gtin")
+            or self.product_data.get("gtin")
+        )
+        if not gtin:
+            print("Skipping product with missing GTIN")
+            return
+
+        # Use a cursor context manager only; keep the shared connection open.
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO embeddings (gtin, embedding)
+                VALUES (%s, %s)
+                ON CONFLICT (gtin) DO UPDATE
+                    SET embedding = EXCLUDED.embedding
+                """,
+                (gtin, self.embedding.tolist()),  # Important: convert numpy array → Python list
+            )
+        print(f"Embedding written to database for product {gtin}, with embedding: {self.embedding}")

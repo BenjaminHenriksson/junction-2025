@@ -8,14 +8,20 @@ with product_data_path.open("r", encoding="utf-8") as f:
 
 # Json.load returns a list of dictionaries
 
-product_data = product_data[:10]
-
 def main():
 
     for item in product_data:
         item = product(item)
         item.write_embedding_to_test_db()
-        print(f"Embedding written to database for product {item.product_data['synkkaData']['gtin']}")
+
+        synkka = item.product_data.get("synkkaData", {})
+        gtin = (
+            item.product_data.get("salesUnitGtin")
+            or synkka.get("gtin")
+            or item.product_data.get("gtin")
+        )
+        if gtin:
+            print(f"Embedding written to database for product {gtin}")
 
 if __name__ == "__main__":
     main()
