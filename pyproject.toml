@@ -1,0 +1,14 @@
+[project]
+name = "valio"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "dotenv>=0.9.9",
+    "google>=3.0.0",
+    "google-genai>=1.50.1",
+    "ijson>=3.4.0.post0",
+    "numpy>=2.3.4",
+    "psycopg[binary]>=3.2.12",
+]
