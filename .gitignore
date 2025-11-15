@@ -12,3 +12,6 @@ wheels/
 numeric_data/
 *.json
 *.csv
+
+# Database
+*.dump 
