@@ -8,18 +8,10 @@ client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 from google.genai import types
 
 import psycopg
+db_name = os.getenv("DB_NAME")
 conn = psycopg.connect(
-    "dbname=test_valio_product_catalog user=postgres host=localhost password=qwerty"
+    f"dbname={db_name} user=postgres host=localhost password=qwerty"
 )
-
-from pathlib import Path
-product_data_path = Path("sample_product.json")
-
-with product_data_path.open("r", encoding="utf-8") as f:
-    product_data = json.load(f)
-
-# Json.load returns a list of dictionaries
-
 
 class product:
     def __init__(self, product_data: dict):
@@ -44,28 +36,38 @@ class product:
         else:
             allergens_string = "No allergens."
 
-        nutritionalClaims = [classification["values"] for classification in self.product_data["synkkaData"]["classifications"] if classification["name"] == "nutritionalClaim"]
-        if len(nutritionalClaims) > 0:
-            nutritionalClaims_string = "; ".join([f"{nutritionalClaim['id']}; ".replace("_", " ").lower() for nutritionalClaim in nutritionalClaims])
+        nutritionalClaims_matches = [
+            classification["values"]
+            for classification in self.product_data["synkkaData"]["classifications"]
+            if classification["name"] == "nutritionalClaim"
+        ]
+
+        # `classification["values"]` is itself a list of dicts, so we need the first match's values
+        if nutritionalClaims_matches:
+            nutritionalClaims = nutritionalClaims_matches[0]
+            nutritionalClaims_string = "; ".join(
+                f"{nutritionalClaim['id']}".replace("_", " ").lower()
+                for nutritionalClaim in nutritionalClaims
+            )
         else:
             nutritionalClaims_string = "No nutritional claims."
 
-        return f"Name: {name}; Net weight: {netWeight}; Marketing Text: {marketingText}; Vendor: {vendorName}; Country of Origin: {countryOfOrigin}; Key Ingredients: {keyIngredients}; Allergens: {allergens_string}; Nutritional Claims: {nutritionalClaims_string}."
+        return f"Name: {name}; Net weight: {netWeight} kg; Marketing Text: {marketingText}; Vendor: {vendorName}; Country of Origin: {countryOfOrigin}; Key Ingredients: {keyIngredients}; Allergens: {allergens_string}; Nutritional Claims: {nutritionalClaims_string}."
 
     def get_embedding(self) -> list[float]:
         embedding_string = self.create_embedding_string()
-                
-        result = [
-            np.array(e.values) for e in client.models.embed_content(
-                model="gemini-embedding-001",
-                contents=[embedding_string],
-                config=types.EmbedContentConfig(output_dimensionality=1536).embeddings
-            )
-        ]
 
-        # [0] assumes there is no batching
+        # Call Gemini embeddings API correctly: pass config as an object,
+        # then read embeddings from the response.
+        response = client.models.embed_content(
+            model="gemini-embedding-001",
+            contents=[embedding_string],
+            config=types.EmbedContentConfig(output_dimensionality=1536),
+        )
 
-        self.embedding = result[0]
+        # We pass a single string in `contents`, so take the first embedding.
+        embeddings = [np.array(e.values) for e in response.embeddings]
+        self.embedding = embeddings[0]
         return self.embedding
 
     def write_embedding_to_test_db(self) -> None:
@@ -79,9 +81,3 @@ class product:
                     (self.product_data["synkkaData"]["gtin"], self.embedding.tolist())     # Important: convert numpy array → Python list
                 )
         print(f"Embedding written to database for product {self.product_data['synkkaData']['gtin']}, with embedding: {self.embedding}")
-
-sample_product_data = product_data[0]
-
-sample_product = product(sample_product_data)
-
-sample_product.write_embedding_to_test_db()

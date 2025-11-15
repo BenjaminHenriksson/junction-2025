@@ -1,8 +1,8 @@
 -- Create the database
-CREATE DATABASE test_valio_product_catalog;
+CREATE DATABASE valio_product_catalog;
 
 -- Connect to it
-\c test_valio_product_catalog;
+\c valio_product_catalog;
 
 -- Enable pgvector extension
 CREATE EXTENSION IF NOT EXISTS vector;

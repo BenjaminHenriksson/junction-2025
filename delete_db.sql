@@ -1,0 +1,1 @@
+DROP DATABASE valio_product_catalog
