@@ -1,0 +1,19 @@
+[Unit]
+Description=Valio Orders API
+After=network.target
+Requires=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/etymologer.com/database-backend
+Environment="PATH=/var/www/etymologer.com/.venv/bin"
+ExecStart=/var/www/etymologer.com/.venv/bin/python3 -m uvicorn orders_api:app --host 0.0.0.0 --port 8002
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/www/etymologer.com/logs/orders_api.log
+StandardError=append:/var/www/etymologer.com/logs/orders_api.log
+
+[Install]
+WantedBy=multi-user.target

@@ -10,12 +10,44 @@ from google.genai import types
 import psycopg
 db_name = os.getenv("DB_NAME")
 db_password = os.getenv("DB_PASSWORD")
-# Keep a long-lived connection for multiple inserts; enable autocommit so we don't
-# need an explicit transaction block for each write.
-conn = psycopg.connect(
-    f"dbname={db_name} user=postgres host=localhost password={db_password}",
-    autocommit=True,
-)
+
+# Lazy connection - only connect when needed (for populate scripts)
+# This allows the API server to import this module without requiring DB connection
+conn = None
+
+def get_db_connection():
+    """Get database connection, creating it if needed"""
+    global conn
+    if conn is None:
+        # Remove quotes if present
+        if db_name:
+            db_name_clean = db_name.strip('"\'')
+        else:
+            db_name_clean = None
+        if db_password:
+            db_password_clean = db_password.strip('"\'')
+        else:
+            db_password_clean = None
+        
+        if not db_name_clean or not db_password_clean:
+            raise RuntimeError("DB_NAME and DB_PASSWORD must be set")
+        
+        # Try password auth first, then peer auth
+        try:
+            conn = psycopg.connect(
+                f"dbname={db_name_clean} user=postgres host=localhost password={db_password_clean}",
+                autocommit=True,
+            )
+        except Exception:
+            # Try peer authentication (for sudo -u postgres)
+            try:
+                conn = psycopg.connect(
+                    f"dbname={db_name_clean} user=postgres host=localhost",
+                    autocommit=True,
+                )
+            except Exception as e:
+                raise RuntimeError(f"Failed to connect to database: {e}")
+    return conn
 
 class product:
     def __init__(self, product_data: dict):
@@ -142,7 +174,8 @@ class product:
             return
 
         # Use a cursor context manager only; keep the shared connection open.
-        with conn.cursor() as cur:
+        db_conn = get_db_connection()
+        with db_conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO embeddings (gtin, embedding)

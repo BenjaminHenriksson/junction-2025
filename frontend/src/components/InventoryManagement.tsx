@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -10,10 +10,8 @@ import {
   MapPin, 
   Search,
   Download,
-  Plus,
-  Truck,
-  Box,
-  Archive
+  Sparkles,
+  Loader2
 } from 'lucide-react';
 import {
   Table,
@@ -23,415 +21,358 @@ import {
   TableHeader,
   TableRow,
 } from './ui/table';
-
-interface InventoryItem {
-  id: string;
-  name: string;
-  sku: string;
-  category: 'supplies' | 'equipment' | 'packaging' | 'vehicle-parts';
-  quantity: number;
-  minThreshold: number;
-  unit: string;
-  location: string;
-  lastRestocked: string;
-  cost: number;
-}
-
-const mockInventory: InventoryItem[] = [
-  {
-    id: '1',
-    name: 'Shipping Boxes (Large)',
-    sku: 'PKG-001',
-    category: 'packaging',
-    quantity: 45,
-    minThreshold: 100,
-    unit: 'units',
-    location: 'Helsinki Warehouse',
-    lastRestocked: '2025-11-10',
-    cost: 2.50
-  },
-  {
-    id: '2',
-    name: 'Bubble Wrap Rolls',
-    sku: 'PKG-002',
-    category: 'packaging',
-    quantity: 28,
-    minThreshold: 50,
-    unit: 'rolls',
-    location: 'Helsinki Warehouse',
-    lastRestocked: '2025-11-08',
-    cost: 15.00
-  },
-  {
-    id: '3',
-    name: 'Packing Tape',
-    sku: 'SUP-001',
-    category: 'supplies',
-    quantity: 156,
-    minThreshold: 80,
-    unit: 'rolls',
-    location: 'Helsinki Warehouse',
-    lastRestocked: '2025-11-14',
-    cost: 3.20
-  },
-  {
-    id: '4',
-    name: 'Handheld Scanners',
-    sku: 'EQP-001',
-    category: 'equipment',
-    quantity: 12,
-    minThreshold: 10,
-    unit: 'units',
-    location: 'Helsinki Warehouse',
-    lastRestocked: '2025-10-25',
-    cost: 450.00
-  },
-  {
-    id: '5',
-    name: 'Delivery Vehicle Tires',
-    sku: 'VEH-001',
-    category: 'vehicle-parts',
-    quantity: 8,
-    minThreshold: 12,
-    unit: 'units',
-    location: 'Tampere Service Center',
-    lastRestocked: '2025-11-01',
-    cost: 180.00
-  },
-  {
-    id: '6',
-    name: 'Fragile Labels',
-    sku: 'SUP-002',
-    category: 'supplies',
-    quantity: 320,
-    minThreshold: 200,
-    unit: 'sheets',
-    location: 'Helsinki Warehouse',
-    lastRestocked: '2025-11-15',
-    cost: 0.15
-  },
-  {
-    id: '7',
-    name: 'Pallet Jacks',
-    sku: 'EQP-002',
-    category: 'equipment',
-    quantity: 3,
-    minThreshold: 5,
-    unit: 'units',
-    location: 'Turku Distribution',
-    lastRestocked: '2025-09-20',
-    cost: 850.00
-  },
-  {
-    id: '8',
-    name: 'Shipping Boxes (Medium)',
-    sku: 'PKG-003',
-    category: 'packaging',
-    quantity: 210,
-    minThreshold: 150,
-    unit: 'units',
-    location: 'Helsinki Warehouse',
-    lastRestocked: '2025-11-13',
-    cost: 1.80
-  },
-  {
-    id: '9',
-    name: 'Safety Vests',
-    sku: 'SUP-003',
-    category: 'supplies',
-    quantity: 18,
-    minThreshold: 25,
-    unit: 'units',
-    location: 'Helsinki Warehouse',
-    lastRestocked: '2025-10-30',
-    cost: 12.00
-  },
-  {
-    id: '10',
-    name: 'Engine Oil (5L)',
-    sku: 'VEH-002',
-    category: 'vehicle-parts',
-    quantity: 24,
-    minThreshold: 20,
-    unit: 'bottles',
-    location: 'Tampere Service Center',
-    lastRestocked: '2025-11-12',
-    cost: 35.00
-  },
-];
-
-const categoryLabels = {
-  'supplies': 'Supplies',
-  'equipment': 'Equipment',
-  'packaging': 'Packaging',
-  'vehicle-parts': 'Vehicle Parts',
-};
-
-const categoryColors = {
-  'supplies': 'bg-blue-100 text-blue-700',
-  'equipment': 'bg-purple-100 text-purple-700',
-  'packaging': 'bg-orange-100 text-orange-700',
-  'vehicle-parts': 'bg-slate-100 text-slate-700',
-};
+import { ScrollArea } from './ui/scroll-area';
+import { Separator } from './ui/separator';
+import { dbApi } from '../services/api';
+import { ProductResponse, SimilarProduct } from '../types/product';
 
 export function InventoryManagement() {
+  const [products, setProducts] = useState<ProductResponse[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [selectedProduct, setSelectedProduct] = useState<ProductResponse | null>(null);
+  const [similarProducts, setSimilarProducts] = useState<SimilarProduct[]>([]);
+  const [loadingSimilar, setLoadingSimilar] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredInventory = mockInventory.filter((item) => {
-    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         item.sku.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = filterCategory === 'all' || item.category === filterCategory;
-    return matchesSearch && matchesCategory;
-  });
+  useEffect(() => {
+    loadProducts();
+  }, []);
 
-  const lowStockItems = mockInventory.filter(item => item.quantity < item.minThreshold);
-  const totalValue = mockInventory.reduce((sum, item) => sum + (item.quantity * item.cost), 0);
-  const totalItems = mockInventory.reduce((sum, item) => sum + item.quantity, 0);
+  useEffect(() => {
+    if (selectedProduct) {
+      loadSimilarProducts(selectedProduct.gtin);
+    } else {
+      setSimilarProducts([]);
+    }
+  }, [selectedProduct]);
 
-  const getStockStatus = (item: InventoryItem) => {
-    const percentage = (item.quantity / item.minThreshold) * 100;
-    if (percentage < 50) return { label: 'Critical', color: 'bg-red-100 text-red-700' };
-    if (percentage < 100) return { label: 'Low Stock', color: 'bg-amber-100 text-amber-700' };
-    return { label: 'In Stock', color: 'bg-emerald-100 text-emerald-700' };
+  const loadProducts = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await dbApi.getProducts(200);
+      setProducts(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load products');
+      console.error('Error loading products:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
+  const loadSimilarProducts = async (gtin: string) => {
+    try {
+      setLoadingSimilar(true);
+      const similar = await dbApi.getSimilarProducts(gtin, 10);
+      setSimilarProducts(similar);
+    } catch (err) {
+      console.error('Error loading similar products:', err);
+      setSimilarProducts([]);
+    } finally {
+      setLoadingSimilar(false);
+    }
+  };
+
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) {
+      loadProducts();
+      return;
+    }
+    try {
+      setLoading(true);
+      const results = await dbApi.searchProducts(searchQuery, 50);
+      setProducts(results);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Search failed');
+      console.error('Error searching products:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getProductName = (product: ProductResponse) => {
+    return product.name || 'Unknown Product';
+  };
+
+  const getProductVendor = (product: ProductResponse) => {
+    return product.product_data.vendorName || 'Unknown Vendor';
+  };
+
+  const getProductCategory = (product: ProductResponse) => {
+    return product.product_data.category || 'N/A';
+  };
+
+  const getProductWeight = (product: ProductResponse) => {
+    const conversions = product.product_data.synkkaData?.unitConversions;
+    if (conversions && conversions.length > 0) {
+      const netWeight = conversions[0].netWeight;
+      if (netWeight) {
+        return `${netWeight.value} ${netWeight.unit}`;
+      }
+    }
+    return 'N/A';
+  };
+
+  const filteredProducts = products.filter((product) => {
+    const name = getProductName(product).toLowerCase();
+    const gtin = product.gtin.toLowerCase();
+    return name.includes(searchQuery.toLowerCase()) || gtin.includes(searchQuery.toLowerCase());
+  });
+
   return (
-    <div className="h-full overflow-auto bg-slate-50">
-      <div className="max-w-7xl mx-auto p-6 space-y-6">
-        {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="border-2 border-[#0D6672]/20">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm text-slate-600 flex items-center gap-2">
-                <Package className="w-4 h-4 text-[#0D6672]" />
-                Total Items
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl">{totalItems}</div>
-              <p className="text-xs text-slate-500 mt-1">Across all locations</p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-2 border-blue-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm text-slate-600 flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-blue-600" />
-                Total Value
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl text-blue-600">€{totalValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-              <p className="text-xs text-slate-500 mt-1">Current inventory</p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-2 border-amber-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm text-slate-600 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-600" />
-                Low Stock Items
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl text-amber-600">{lowStockItems.length}</div>
-              <p className="text-xs text-slate-500 mt-1">Require restocking</p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-2 border-purple-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm text-slate-600 flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-purple-600" />
-                Locations
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl text-purple-600">3</div>
-              <p className="text-xs text-slate-500 mt-1">Active warehouses</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Low Stock Alerts */}
-        {lowStockItems.length > 0 && (
-          <Card className="border-2 border-amber-200 bg-amber-50">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-amber-900">
-                <AlertTriangle className="w-5 h-5" />
-                Low Stock Alerts
-              </CardTitle>
-              <CardDescription className="text-amber-700">
-                The following items are below their minimum threshold and require restocking
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {lowStockItems.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-amber-200">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-amber-100 rounded-lg">
-                        {item.category === 'packaging' && <Box className="w-4 h-4 text-amber-700" />}
-                        {item.category === 'equipment' && <Archive className="w-4 h-4 text-amber-700" />}
-                        {item.category === 'supplies' && <Package className="w-4 h-4 text-amber-700" />}
-                        {item.category === 'vehicle-parts' && <Truck className="w-4 h-4 text-amber-700" />}
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">{item.name}</p>
-                        <p className="text-xs text-slate-500">{item.sku}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium text-amber-700">{item.quantity} / {item.minThreshold}</p>
-                      <p className="text-xs text-slate-500">{item.unit}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Inventory Table */}
-        <Card className="border-2 border-[#0D6672]/20">
+    <div className="h-full flex overflow-hidden bg-slate-50">
+      {/* Left Panel - Products List */}
+      <div className="w-[60%] border-r bg-white flex flex-col">
+        <Card className="border-0 shadow-none rounded-none border-b">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Inventory Items</CardTitle>
-                <CardDescription>Manage and track all inventory across locations</CardDescription>
+                <CardTitle>Product Catalog</CardTitle>
+                <CardDescription>Browse products and find similar items</CardDescription>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={loadProducts}>
                   <Download className="w-4 h-4 mr-2" />
-                  Export
-                </Button>
-                <Button size="sm" className="bg-[#0D6672] hover:bg-[#0a5259]">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Item
+                  Refresh
                 </Button>
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            {/* Search and Filter */}
-            <div className="flex gap-3 mb-4">
+            {/* Search */}
+            <div className="flex gap-2 mb-4">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <Input
-                  placeholder="Search by name or SKU..."
+                  placeholder="Search products by name or GTIN..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSearch();
+                    }
+                  }}
                   className="pl-10"
                 />
               </div>
-              <div className="flex gap-2">
-                <Button
-                  variant={filterCategory === 'all' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setFilterCategory('all')}
-                  className={filterCategory === 'all' ? 'bg-[#0D6672] hover:bg-[#0a5259]' : ''}
-                >
-                  All
-                </Button>
-                <Button
-                  variant={filterCategory === 'packaging' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setFilterCategory('packaging')}
-                  className={filterCategory === 'packaging' ? 'bg-[#0D6672] hover:bg-[#0a5259]' : ''}
-                >
-                  Packaging
-                </Button>
-                <Button
-                  variant={filterCategory === 'supplies' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setFilterCategory('supplies')}
-                  className={filterCategory === 'supplies' ? 'bg-[#0D6672] hover:bg-[#0a5259]' : ''}
-                >
-                  Supplies
-                </Button>
-                <Button
-                  variant={filterCategory === 'equipment' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setFilterCategory('equipment')}
-                  className={filterCategory === 'equipment' ? 'bg-[#0D6672] hover:bg-[#0a5259]' : ''}
-                >
-                  Equipment
-                </Button>
-                <Button
-                  variant={filterCategory === 'vehicle-parts' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setFilterCategory('vehicle-parts')}
-                  className={filterCategory === 'vehicle-parts' ? 'bg-[#0D6672] hover:bg-[#0a5259]' : ''}
-                >
-                  Vehicle Parts
-                </Button>
-              </div>
+              <Button 
+                onClick={handleSearch}
+                className="bg-[#0D6672] hover:bg-[#0a5259]"
+              >
+                Search
+              </Button>
             </div>
 
-            {/* Table */}
-            <div className="border rounded-lg">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Item</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Quantity</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Location</TableHead>
-                    <TableHead>Unit Cost</TableHead>
-                    <TableHead>Total Value</TableHead>
-                    <TableHead>Last Restocked</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredInventory.map((item) => {
-                    const status = getStockStatus(item);
-                    return (
-                      <TableRow key={item.id}>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{item.name}</p>
-                            <p className="text-xs text-slate-500">{item.sku}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={categoryColors[item.category]}>
-                            {categoryLabels[item.category]}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{item.quantity}</p>
-                            <p className="text-xs text-slate-500">{item.unit}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={status.color}>
-                            {status.label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1 text-sm">
-                            <MapPin className="w-3 h-3 text-slate-400" />
-                            {item.location}
-                          </div>
-                        </TableCell>
-                        <TableCell>€{item.cost.toFixed(2)}</TableCell>
-                        <TableCell className="font-medium">
-                          €{(item.quantity * item.cost).toFixed(2)}
-                        </TableCell>
-                        <TableCell className="text-sm text-slate-500">
-                          {new Date(item.lastRestocked).toLocaleDateString('fi-FI')}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                {error}
+              </div>
+            )}
           </CardContent>
         </Card>
+
+        {/* Products Table */}
+        <div className="flex-1 overflow-auto">
+          {loading ? (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 className="w-6 h-6 animate-spin text-[#0D6672]" />
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Product Name</TableHead>
+                  <TableHead>GTIN</TableHead>
+                  <TableHead>Vendor</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Weight</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredProducts.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-slate-500 py-8">
+                      No products found
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredProducts.map((product) => (
+                    <TableRow
+                      key={product.gtin}
+                      className={`cursor-pointer transition-colors ${
+                        selectedProduct?.gtin === product.gtin
+                          ? 'bg-[#0D6672]/10 ring-2 ring-[#0D6672] ring-inset'
+                          : 'hover:bg-slate-50'
+                      }`}
+                      onClick={() => setSelectedProduct(product)}
+                    >
+                      <TableCell className="font-medium">
+                        {getProductName(product)}
+                      </TableCell>
+                      <TableCell className="text-sm text-slate-600">
+                        {product.gtin}
+                      </TableCell>
+                      <TableCell>{getProductVendor(product)}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{getProductCategory(product)}</Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-slate-600">
+                        {getProductWeight(product)}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          )}
+        </div>
+      </div>
+
+      {/* Right Panel - Product Details & Similar Products */}
+      <div className="w-[40%] flex flex-col bg-white">
+        {selectedProduct ? (
+          <>
+            {/* Product Details - Top Half */}
+            <div className="h-[50%] overflow-auto border-b p-6">
+              <Card className="border-0 shadow-none">
+                <CardHeader className="pb-3 px-0">
+                  <CardTitle className="mb-2">{getProductName(selectedProduct)}</CardTitle>
+                  <Badge variant="outline" className="w-fit">
+                    GTIN: {selectedProduct.gtin}
+                  </Badge>
+                </CardHeader>
+                <CardContent className="px-0">
+                  <ScrollArea className="h-full">
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 text-slate-600 text-sm">
+                            <Package className="w-4 h-4" />
+                            <span>Vendor</span>
+                          </div>
+                          <p className="pl-6">{getProductVendor(selectedProduct)}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 text-slate-600 text-sm">
+                            <MapPin className="w-4 h-4" />
+                            <span>Origin</span>
+                          </div>
+                          <p className="pl-6">
+                            {selectedProduct.product_data.countryOfOrigin || 'N/A'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <Separator />
+
+                      <div>
+                        <h4 className="mb-2 text-slate-600 text-sm font-medium">Product Details</h4>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Category:</span>
+                            <span>{getProductCategory(selectedProduct)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Weight:</span>
+                            <span>{getProductWeight(selectedProduct)}</span>
+                          </div>
+                          {selectedProduct.product_data.synkkaData?.brand && (
+                            <div className="flex justify-between">
+                              <span className="text-slate-600">Brand:</span>
+                              <span>{selectedProduct.product_data.synkkaData.brand}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {selectedProduct.product_data.synkkaData?.marketingTexts?.[0]?.value && (
+                        <>
+                          <Separator />
+                          <div>
+                            <h4 className="mb-2 text-slate-600 text-sm font-medium">Description</h4>
+                            <p className="text-sm text-slate-700">
+                              {selectedProduct.product_data.synkkaData.marketingTexts[0].value}
+                            </p>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Similar Products - Bottom Half */}
+            <div className="h-[50%] overflow-hidden p-6">
+              <Card className="border-0 shadow-none h-full flex flex-col">
+                <CardHeader className="pb-3 px-0">
+                  <CardTitle className="flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-[#0D6672]" />
+                    Similar Products
+                  </CardTitle>
+                  <CardDescription>
+                    Products with similar characteristics based on vector similarity
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="px-0 flex-1 overflow-hidden">
+                  {loadingSimilar ? (
+                    <div className="flex items-center justify-center h-full">
+                      <Loader2 className="w-6 h-6 animate-spin text-[#0D6672]" />
+                    </div>
+                  ) : similarProducts.length === 0 ? (
+                    <div className="flex items-center justify-center h-full text-slate-500 text-sm">
+                      No similar products found
+                    </div>
+                  ) : (
+                    <ScrollArea className="h-full">
+                      <div className="space-y-3">
+                        {similarProducts.map((similar) => (
+                          <div
+                            key={similar.gtin}
+                            className="p-3 bg-slate-50 rounded-lg border border-slate-200 hover:border-[#0D6672] transition-colors cursor-pointer"
+                            onClick={() => setSelectedProduct({
+                              gtin: similar.gtin,
+                              name: similar.name,
+                              product_data: similar.product_data
+                            })}
+                          >
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex-1">
+                                <p className="font-medium text-sm">{similar.name}</p>
+                                <p className="text-xs text-slate-500 mt-1">GTIN: {similar.gtin}</p>
+                              </div>
+                              <Badge 
+                                variant="outline" 
+                                className="bg-[#0D6672]/10 text-[#0D6672] border-[#0D6672]/20"
+                              >
+                                {(similar.similarity * 100).toFixed(1)}% match
+                              </Badge>
+                            </div>
+                            <div className="text-xs text-slate-600 mt-2">
+                              <span className="font-medium">Vendor:</span> {getProductVendor({
+                                gtin: similar.gtin,
+                                name: similar.name,
+                                product_data: similar.product_data
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-slate-400">
+            <div className="text-center">
+              <Package className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+              <p className="text-sm">Select a product to view details and similar products</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

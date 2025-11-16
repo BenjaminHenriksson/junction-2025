@@ -12,7 +12,7 @@ library(plumber);
 pr <- plumb('server.R');
 pr\$run(
   host = '0.0.0.0',
-  port = 8000
+  port = 8001
 )
 "
 

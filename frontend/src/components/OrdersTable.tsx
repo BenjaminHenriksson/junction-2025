@@ -81,8 +81,7 @@ export function OrdersTable({
 
   const getStatusCount = (status: OrderStatus | "all") => {
     if (status === "all") return orders.length;
-    return orders.filter((order) => order.status === status)
-      .length;
+    return orders.filter((order) => order.status === status).length;
   };
 
   const handleSort = (column: SortColumn) => {

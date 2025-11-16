@@ -1,12 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Order, OrderStatus } from './types/order';
-import { mockOrders } from './data/mockOrders';
 import { OrdersTable } from './components/OrdersTable';
 import { OrderDetails } from './components/OrderDetails';
 import { ChatInterface } from './components/ChatInterface';
 import { Dashboard } from './components/Dashboard';
 import { InventoryManagement } from './components/InventoryManagement';
-import { LayoutDashboard, ClipboardList, Package } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, Package, Loader2 } from 'lucide-react';
+import { ordersApi } from './services/api';
 
 type ViewMode = 'dashboard' | 'orders' | 'inventory';
 
@@ -14,6 +14,27 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('orders');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all');
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadOrders();
+  }, [statusFilter]);
+
+  const loadOrders = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await ordersApi.getOrders(200, 0, statusFilter === 'all' ? undefined : statusFilter);
+      setOrders(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load orders');
+      console.error('Error loading orders:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="h-screen flex flex-col bg-slate-50">
@@ -73,13 +94,21 @@ export default function App() {
         <div className="flex-1 flex overflow-hidden">
           {/* Left Panel - Orders Table */}
           <div className="w-[60%] border-r bg-white">
-            <OrdersTable
-              orders={mockOrders}
-              selectedOrderId={selectedOrder?.id}
-              onSelectOrder={setSelectedOrder}
-              statusFilter={statusFilter}
-              onStatusFilterChange={setStatusFilter}
-            />
+            {loading ? (
+              <div className="flex items-center justify-center h-full">
+                <Loader2 className="w-6 h-6 animate-spin text-[#0D6672]" />
+              </div>
+            ) : error ? (
+              <div className="p-6 text-red-600">{error}</div>
+            ) : (
+              <OrdersTable
+                orders={orders}
+                selectedOrderId={selectedOrder?.id}
+                onSelectOrder={setSelectedOrder}
+                statusFilter={statusFilter}
+                onStatusFilterChange={setStatusFilter}
+              />
+            )}
           </div>
 
           {/* Right Panel - Order Details & Chat */}
