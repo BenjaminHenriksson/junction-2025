@@ -124,7 +124,21 @@ make_design_matrix <- function(new_df) {
 
 
 # ------------------------------------------------------------
-# 2. API Endpoints
+# 2. Custom Serializer for proper JSON (scalars not arrays)
+# ------------------------------------------------------------
+unboxedJSON <- function(val, req, res, errorHandler){
+  tryCatch({
+    json <- jsonlite::toJSON(val, auto_unbox = TRUE, null = "null", na = "null")
+    res$setHeader("Content-Type", "application/json")
+    res$body <- json
+    return(res$toResponse())
+  }, error=function(e){
+    errorHandler(req, res, e)
+  })
+}
+
+# ------------------------------------------------------------
+# 3. API Endpoints
 # ------------------------------------------------------------
 
 #* Simple health check
@@ -157,44 +171,56 @@ function() {
 #* ]
 #*
 #* @post /predict
-#* @serializer json
+#* @serializer unboxedJSON
 function(req) {
-  if (is.null(req$postBody) || req$postBody == "") {
-    res <- list(error = "Empty request body")
-    return(res)
-  }
-  
-  payload <- tryCatch(
-    jsonlite::fromJSON(req$postBody, simplifyDataFrame = TRUE),
-    error = function(e) NULL
-  )
-  
-  if (is.null(payload)) {
-    return(list(error = "Invalid JSON payload"))
-  }
-  
-  # Handle both single-object and array-of-objects
-  if (is.data.frame(payload)) {
-    new_df <- payload
-  } else if (is.list(payload)) {
-    # If payload is a list of records
-    new_df <- as.data.frame(payload, stringsAsFactors = FALSE)
-  } else {
-    return(list(error = "Unsupported payload structure"))
-  }
-  
-  X_new <- make_design_matrix(new_df)
-  dnew  <- xgb.DMatrix(data = X_new)
-  probs <- predict(final_model, dnew)
-  
-  preds <- ifelse(probs >= 0.5, 1L, 0L)
-  
-  list(
-    n = length(probs),
-    predictions = data.frame(
-      prob_failure = probs,
-      predicted_failure = preds
+  tryCatch({
+    if (is.null(req$postBody) || req$postBody == "") {
+      return(list(error = "Empty request body"))
+    }
+    
+    payload <- tryCatch(
+      jsonlite::fromJSON(req$postBody, simplifyDataFrame = TRUE),
+      error = function(e) NULL
     )
-  )
+    
+    if (is.null(payload)) {
+      return(list(error = "Invalid JSON payload"))
+    }
+    
+    # Handle both single-object and array-of-objects
+    if (is.data.frame(payload)) {
+      new_df <- payload
+    } else if (is.list(payload)) {
+      # If payload is a list of records
+      new_df <- as.data.frame(payload, stringsAsFactors = FALSE)
+    } else {
+      return(list(error = "Unsupported payload structure"))
+    }
+    
+    X_new <- make_design_matrix(new_df)
+    dnew  <- xgb.DMatrix(data = X_new)
+    probs <- predict(final_model, dnew)
+    
+    preds <- ifelse(probs >= 0.5, 1L, 0L)
+    
+    # Convert predictions to list of records
+    # Build list with atomic values (not vectors)
+    pred_list <- vector("list", length(probs))
+    for (i in 1:length(probs)) {
+      pred_list[[i]] <- list(
+        prob_failure = as.numeric(probs[i]),
+        predicted_failure = as.integer(preds[i])
+      )
+    }
+    
+    # Return as list with proper types
+    # length() always returns a scalar, so this should be fine
+    list(
+      n = length(probs),
+      predictions = pred_list
+    )
+  }, error = function(e) {
+    list(error = paste("Prediction failed:", conditionMessage(e)))
+  })
 }
 

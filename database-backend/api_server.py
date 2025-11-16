@@ -10,7 +10,9 @@ import psycopg
 import numpy as np
 from product_embedding import product
 
-dotenv.load_dotenv()
+# Load .env from project root (parent directory)
+env_path = Path(__file__).parent.parent / ".env"
+dotenv.load_dotenv(env_path)
 
 app = FastAPI(title="Product Database API")
 
@@ -25,6 +27,7 @@ app.add_middleware(
 )
 
 # Database connection
+db_conn = None  # Global connection variable
 db_name = os.getenv("DB_NAME")
 db_password = os.getenv("DB_PASSWORD")
 
@@ -34,19 +37,57 @@ if db_name:
 if db_password:
     db_password = db_password.strip('"\'')
 
-if not db_name or not db_password:
-    print("WARNING: DB_NAME or DB_PASSWORD not set. Database features will not work.")
+def get_db_connection():
+    """Get or recreate database connection"""
+    global db_conn
+    
+    if not db_name:
+        return None
+    
+    # Check if connection exists and is still open
+    if db_conn is not None:
+        try:
+            # Try a simple query to check if connection is alive
+            with db_conn.cursor() as cur:
+                cur.execute("SELECT 1")
+            return db_conn
+        except Exception:
+            # Connection is closed, set to None to reconnect
+            db_conn = None
+    
+    # Try to establish new connection
+    connection_methods = []
+    
+    # Method 1: Password authentication
+    if db_password:
+        connection_methods.append(("password", f"dbname={db_name} user=postgres host=localhost password={db_password}"))
+    
+    # Method 2: Peer authentication (no password, uses Unix socket)
+    connection_methods.append(("peer", f"dbname={db_name} user=postgres host=localhost"))
+    
+    # Method 3: Try with host=/var/run/postgresql for Unix socket
+    connection_methods.append(("socket", f"dbname={db_name} user=postgres host=/var/run/postgresql"))
+    
+    for method_name, conn_string in connection_methods:
+        try:
+            db_conn = psycopg.connect(conn_string, autocommit=True)
+            print(f"Database connection successful ({method_name}): {db_name}")
+            return db_conn
+        except Exception as e:
+            print(f"Connection method '{method_name}' failed: {e}")
+            continue
+    
+    print("WARNING: All database connection methods failed.")
+    return None
 
-try:
-    db_conn = psycopg.connect(
-        f"dbname={db_name} user=postgres host=localhost password={db_password}",
-        autocommit=True,
-    )
-    print(f"Database connection successful: {db_name}")
-except Exception as e:
-    print(f"WARNING: Database connection failed: {e}")
-    print("API will use JSON fallback for product data.")
+# Initial connection attempt
+if not db_name:
+    print("WARNING: DB_NAME not set. Database features will not work.")
     db_conn = None
+else:
+    db_conn = get_db_connection()
+    if not db_conn:
+        print("API will use JSON fallback for product data.")
 
 # Fallback: Load product data from JSON only when needed (for product_data field)
 product_data_path = Path(__file__).parent / "valio_aimo_product_data_junction_2025.json"
@@ -79,10 +120,11 @@ def get_product_by_gtin_from_json(gtin: str) -> Optional[dict]:
 
 def get_product_by_gtin_from_db(gtin: str) -> Optional[dict]:
     """Get product from database"""
-    if not db_conn:
+    conn = get_db_connection()
+    if not conn:
         return None
     try:
-        with db_conn.cursor() as cur:
+        with conn.cursor() as cur:
             cur.execute("SELECT product_data FROM products WHERE gtin = %s", (gtin,))
             result = cur.fetchone()
             if result:
@@ -121,9 +163,10 @@ def get_products(
 ):
     """Get list of products from database"""
     # Try database first
-    if db_conn:
+    conn = get_db_connection()
+    if conn:
         try:
-            with db_conn.cursor() as cur:
+            with conn.cursor() as cur:
                 cur.execute("""
                     SELECT gtin, name, product_data 
                     FROM products 
@@ -183,12 +226,30 @@ def get_products(
     
     return products
 
+@app.get("/products/count")
+def get_products_count():
+    """Get total number of products"""
+    conn = get_db_connection()
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM products")
+                count = cur.fetchone()[0]
+            return {"count": count}
+        except Exception:
+            pass
+    
+    # Fallback to JSON count
+    products = load_product_data()
+    return {"count": len(products)}
+
 @app.get("/products/{gtin}", response_model=ProductResponse)
 def get_product(gtin: str):
     """Get a single product by GTIN"""
-    if db_conn:
+    conn = get_db_connection()
+    if conn:
         try:
-            with db_conn.cursor() as cur:
+            with conn.cursor() as cur:
                 cur.execute("SELECT gtin, name, product_data FROM products WHERE gtin = %s", (gtin,))
                 result = cur.fetchone()
                 
@@ -229,27 +290,77 @@ def get_similar_products(
     if not prod:
         raise HTTPException(status_code=404, detail=f"Product with GTIN {gtin} not found")
     
-    # Create embedding for the product
-    prod_obj = product(prod)
-    embedding = prod_obj.get_embedding()
-    
-    # Query database for similar products
-    if not db_conn:
+    # Get database connection (will reconnect if needed)
+    conn = get_db_connection()
+    if not conn:
         raise HTTPException(status_code=503, detail="Database connection not available for vector search")
     
-    with db_conn.cursor() as cur:
-        # Use cosine similarity - pgvector returns 1 - cosine_distance
-        cur.execute("""
-            SELECT 
-                e.gtin,
-                1 - (e.embedding <=> %s::vector) as similarity
-            FROM embeddings e
-            WHERE e.gtin != %s
-            ORDER BY e.embedding <=> %s::vector
-            LIMIT %s
-        """, (embedding.tolist(), gtin, embedding.tolist(), limit))
-        
-        results = cur.fetchall()
+    # First, check if the product has an embedding in the database
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT embedding FROM embeddings WHERE gtin = %s", (gtin,))
+            result = cur.fetchone()
+            
+            if not result:
+                # Product doesn't have an embedding - try to create one, but if API fails, return empty
+                try:
+                    prod_obj = product(prod)
+                    embedding = prod_obj.get_embedding()
+                    embedding_list = embedding.tolist()
+                except Exception as e:
+                    print(f"Warning: Could not create embedding for {gtin}: {e}")
+                    # Return empty list if we can't create embedding and it doesn't exist
+                    return []
+            else:
+                # Use existing embedding from database
+                embedding_list = result[0]
+    except Exception as e:
+        print(f"Error querying embeddings: {e}")
+        # Try to reconnect and retry once
+        conn = get_db_connection()
+        if not conn:
+            raise HTTPException(status_code=503, detail="Database connection failed")
+        with conn.cursor() as cur:
+            cur.execute("SELECT embedding FROM embeddings WHERE gtin = %s", (gtin,))
+            result = cur.fetchone()
+            if not result:
+                return []
+            embedding_list = result[0]
+    
+    # Query for similar products using the embedding
+    try:
+        with conn.cursor() as cur:
+            # Use cosine similarity - pgvector returns 1 - cosine_distance
+            # The <=> operator computes cosine distance (0 = identical, 2 = opposite)
+            # We convert to similarity score (1 - distance), so higher = more similar
+            cur.execute("""
+                SELECT 
+                    e.gtin,
+                    1 - (e.embedding <=> %s::vector) as similarity
+                FROM embeddings e
+                WHERE e.gtin::text != %s
+                ORDER BY e.embedding <=> %s::vector
+                LIMIT %s
+            """, (embedding_list, str(gtin), embedding_list, limit))
+            
+            results = cur.fetchall()
+    except Exception as e:
+        print(f"Error querying similar products: {e}")
+        # Try to reconnect and retry once
+        conn = get_db_connection()
+        if not conn:
+            raise HTTPException(status_code=503, detail="Database connection failed")
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT 
+                    e.gtin,
+                    1 - (e.embedding <=> %s::vector) as similarity
+                FROM embeddings e
+                WHERE e.gtin::text != %s
+                ORDER BY e.embedding <=> %s::vector
+                LIMIT %s
+            """, (embedding_list, str(gtin), embedding_list, limit))
+            results = cur.fetchall()
     
     # Build response
     similar_products = []
@@ -275,9 +386,10 @@ def search_products(
     limit: int = Query(20, ge=1, le=100)
 ):
     """Search products by name using database full-text search"""
-    if db_conn:
+    conn = get_db_connection()
+    if conn:
         try:
-            with db_conn.cursor() as cur:
+            with conn.cursor() as cur:
                 # Use PostgreSQL full-text search
                 cur.execute("""
                     SELECT gtin, name, product_data
@@ -339,22 +451,6 @@ def search_products(
             break
     
     return results
-
-@app.get("/products/count")
-def get_products_count():
-    """Get total number of products"""
-    if db_conn:
-        try:
-            with db_conn.cursor() as cur:
-                cur.execute("SELECT COUNT(*) FROM products")
-                count = cur.fetchone()[0]
-            return {"count": count}
-        except Exception:
-            pass
-    
-    # Fallback to JSON count
-    products = load_product_data()
-    return {"count": len(products)}
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,0 +1,12 @@
+INFO:     Started server process [77266]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8002 (Press CTRL+C to quit)
+INFO:     127.0.0.1:33942 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44208 - "GET / HTTP/1.1" 200 OK
+Sampling orders from /var/www/etymologer.com/stats-backend/cleaned_data.csv...
+Found 26544 failures, 18940 action required, 1390388 completed
+Sampled 2000 orders (500 failures, 500 action required, 1000 completed)
+INFO:     172.64.223.53:0 - "GET /orders?limit=200&offset=0 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /orders?limit=200&offset=0 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /orders?limit=200&offset=0 HTTP/1.1" 200 OK

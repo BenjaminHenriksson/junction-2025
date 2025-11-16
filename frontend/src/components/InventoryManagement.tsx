@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -46,6 +46,56 @@ export function InventoryManagement() {
       setSimilarProducts([]);
     }
   }, [selectedProduct]);
+
+  // Auto-search after user stops typing (debounced)
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    // If search query is empty, load all products immediately
+    if (!searchQuery.trim()) {
+      const loadAllProducts = async () => {
+        try {
+          setLoading(true);
+          setError(null);
+          const data = await dbApi.getProducts(200);
+          setProducts(data);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to load products');
+          console.error('Error loading products:', err);
+        } finally {
+          setLoading(false);
+        }
+      };
+      loadAllProducts();
+      return;
+    }
+
+    // Set a new timeout to trigger search after 100ms of no typing
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const results = await dbApi.searchProducts(searchQuery, 50);
+        setProducts(results);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Search failed');
+        console.error('Error searching products:', err);
+      } finally {
+        setLoading(false);
+      }
+    }, 100);
+
+    // Cleanup function to clear timeout on unmount or when searchQuery changes
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery]); // Trigger when searchQuery changes
 
   const loadProducts = async () => {
     try {

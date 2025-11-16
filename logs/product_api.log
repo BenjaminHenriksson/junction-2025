@@ -1,0 +1,66 @@
+INFO:     Started server process [77252]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+Database connection successful (password): valio_product_catalog
+INFO:     127.0.0.1:50310 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57576 - "GET / HTTP/1.1" 200 OK
+INFO:     172.64.223.53:0 - "GET /products?limit=200&offset=0 HTTP/1.1" 200 OK
+Loading product data from JSON (fallback)...
+Loaded 17546 products
+INFO:     172.64.223.53:0 - "GET /products/59092650/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     172.64.223.53:0 - "GET /products/87157406/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     172.64.223.53:0 - "GET /products/87157239/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     172.64.223.53:0 - "GET /products/8715700016504/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     172.64.223.53:0 - "GET /products/87157239/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /products?limit=200&offset=0 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /products?limit=200&offset=0 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /products/59032823/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /search?q=oas&limit=50 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /search?q=oasta&limit=50 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /products?limit=200&offset=0 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /search?q=pas&limit=50 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /search?q=pasta&limit=50 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /products/7330968550044/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /products?limit=200&offset=0 HTTP/1.1" 200 OK
+INFO:     162.158.239.121:0 - "GET /products?limit=200&offset=0 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /products/64027135/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.121:0 - "GET /products/80052944/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /products/11210135871/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.121:0 - "GET /products/24000024675/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /products/26102078082/similar?limit=10 HTTP/1.1" 404 Not Found
+INFO:     162.158.239.121:0 - "GET /products/26102376850/similar?limit=10 HTTP/1.1" 404 Not Found
+INFO:     162.158.239.122:0 - "GET /products/26102089583/similar?limit=10 HTTP/1.1" 404 Not Found
+INFO:     162.158.239.121:0 - "GET /products/11210009219/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /products/11210116870/similar?limit=10 HTTP/1.1" 404 Not Found
+INFO:     162.158.239.121:0 - "GET /products/13969006426/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /products/16229909819/similar?limit=10 HTTP/1.1" 404 Not Found
+INFO:     162.158.239.121:0 - "GET /products/20648100221/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /products/13969006426/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.121:0 - "GET /products/13154000000/similar?limit=10 HTTP/1.1" 404 Not Found
+INFO:     162.158.239.122:0 - "GET /search?q=s&limit=50 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /search?q=sm&limit=50 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /search?q=smok&limit=50 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /search?q=smoked&limit=50 HTTP/1.1" 200 OK
+INFO:     162.158.239.121:0 - "GET /products/4742903010088/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /products/7311310041168/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.121:0 - "GET /products/6405234011893/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /products/6409290001218/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.121:0 - "GET /products/6405981350009/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /products/6430071602195/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.121:0 - "GET /products/2387936300000/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /products/54750265000949/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.121:0 - "GET /products/2387936300000/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /products/6407976870004/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.121:0 - "GET /products?limit=200&offset=0 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /products/64027173/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.121:0 - "GET /products/24000024675/similar?limit=10 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /products/26102800096/similar?limit=10 HTTP/1.1" 404 Not Found
+INFO:     162.158.239.121:0 - "GET /products/26102800256/similar?limit=10 HTTP/1.1" 404 Not Found
+INFO:     162.158.239.122:0 - "GET /products/26102800096/similar?limit=10 HTTP/1.1" 404 Not Found
+INFO:     162.158.239.121:0 - "GET /products/26102800058/similar?limit=10 HTTP/1.1" 404 Not Found
+INFO:     162.158.239.122:0 - "GET /search?q=b&limit=50 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /search?q=bo&limit=50 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /search?q=bow&limit=50 HTTP/1.1" 200 OK
+INFO:     162.158.239.122:0 - "GET /search?q=bowl&limit=50 HTTP/1.1" 200 OK
+INFO:     162.158.239.121:0 - "GET /products/7321011880614/similar?limit=10 HTTP/1.1" 200 OK

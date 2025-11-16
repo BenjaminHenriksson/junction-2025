@@ -19,6 +19,7 @@ import {
   ArrowDown,
 } from "lucide-react";
 import { useState } from "react";
+import { format } from "date-fns";
 
 interface OrdersTableProps {
   orders: Order[];
@@ -59,7 +60,7 @@ const statusConfig = {
   },
 };
 
-type SortColumn = "orderNumber" | "customer" | "destination" | "status" | "value";
+type SortColumn = "orderNumber" | "customer" | "destination" | "status" | "value" | "date";
 type SortDirection = "asc" | "desc" | null;
 
 export function OrdersTable({
@@ -74,6 +75,7 @@ export function OrdersTable({
   const [sortDirection, setSortDirection] =
     useState<SortDirection>("asc");
 
+  // Filter by status
   const filteredOrders =
     statusFilter === "all"
       ? orders
@@ -122,6 +124,9 @@ export function OrdersTable({
       case "value":
         comparison = a.totalValue - b.totalValue;
         break;
+      case "date":
+        comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        break;
     }
 
     return sortDirection === "asc" ? comparison : -comparison;
@@ -143,34 +148,44 @@ export function OrdersTable({
     );
   };
 
+  const formatDate = (dateString: string) => {
+    try {
+      return format(new Date(dateString), "MMM d, yyyy");
+    } catch {
+      return dateString;
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="px-6 py-5 border-b bg-white">
         <h2 className="mb-4">Orders Management</h2>
-        <Tabs
-          value={statusFilter}
-          onValueChange={(value) =>
-            onStatusFilterChange(value as OrderStatus | "all")
-          }
-        >
-          <TabsList className="grid w-full grid-cols-5 h-11">
-            <TabsTrigger value="all" className="text-xs">
-              All <span className="ml-1">({getStatusCount("all")})</span>
-            </TabsTrigger>
-            <TabsTrigger value="support_required" className="text-xs">
-              Support Requested <span className="ml-1">({getStatusCount("support_required")})</span>
-            </TabsTrigger>
-            <TabsTrigger value="action_required" className="text-xs">
-              Action Required <span className="ml-1">({getStatusCount("action_required")})</span>
-            </TabsTrigger>
-            <TabsTrigger value="ai_resolving" className="text-xs">
-              AI Agent Dispatched <span className="ml-1">({getStatusCount("ai_resolving")})</span>
-            </TabsTrigger>
-            <TabsTrigger value="completed" className="text-xs">
-              Done <span className="ml-1">({getStatusCount("completed")})</span>
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <div className="mb-4">
+          <Tabs
+            value={statusFilter}
+            onValueChange={(value) =>
+              onStatusFilterChange(value as OrderStatus | "all")
+            }
+          >
+            <TabsList className="flex flex-wrap w-full h-auto gap-1 p-1">
+              <TabsTrigger value="all" className="text-xs flex-shrink-0">
+                All <span className="ml-1">({getStatusCount("all")})</span>
+              </TabsTrigger>
+              <TabsTrigger value="support_required" className="text-xs flex-shrink-0">
+                Support Requested <span className="ml-1">({getStatusCount("support_required")})</span>
+              </TabsTrigger>
+              <TabsTrigger value="action_required" className="text-xs flex-shrink-0">
+                Action Required <span className="ml-1">({getStatusCount("action_required")})</span>
+              </TabsTrigger>
+              <TabsTrigger value="ai_resolving" className="text-xs flex-shrink-0">
+                AI Agent Dispatched <span className="ml-1">({getStatusCount("ai_resolving")})</span>
+              </TabsTrigger>
+              <TabsTrigger value="completed" className="text-xs flex-shrink-0">
+                Done <span className="ml-1">({getStatusCount("completed")})</span>
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto">
@@ -213,6 +228,15 @@ export function OrdersTable({
                   <SortIcon column="status" />
                 </button>
               </TableHead>
+              <TableHead>
+                <button
+                  onClick={() => handleSort("date")}
+                  className="flex items-center hover:text-slate-900 transition-colors text-xs"
+                >
+                  Date
+                  <SortIcon column="date" />
+                </button>
+              </TableHead>
               <TableHead className="text-right">
                 <button
                   onClick={() => handleSort("value")}
@@ -250,6 +274,9 @@ export function OrdersTable({
                       <StatusIcon className="w-3 h-3 mr-1" />
                       {config.label}
                     </Badge>
+                  </TableCell>
+                  <TableCell className="text-slate-600 text-sm">
+                    {formatDate(order.createdAt)}
                   </TableCell>
                   <TableCell className="text-right">
                     €{order.totalValue.toLocaleString()}
