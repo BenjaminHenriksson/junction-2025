@@ -9,10 +9,11 @@ from google.genai import types
 
 import psycopg
 db_name = os.getenv("DB_NAME")
+db_password = os.getenv("DB_PASSWORD")
 # Keep a long-lived connection for multiple inserts; enable autocommit so we don't
 # need an explicit transaction block for each write.
 conn = psycopg.connect(
-    f"dbname={db_name} user=postgres host=localhost password=qwerty",
+    f"dbname={db_name} user=postgres host=localhost password={db_password}",
     autocommit=True,
 )
 

@@ -71,3 +71,4 @@ echo -e "${GREEN}Build output: $BUILD_DIR${NC}"
 
 echo -e "${GREEN}Deployment complete!${NC}"
 echo -e "${GREEN}Frontend is now live at: http://etymologer.com${NC}"
+
