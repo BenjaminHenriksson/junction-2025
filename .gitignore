@@ -10,10 +10,10 @@ wheels/
 .venv
 
 numeric_data/
-.json
+*.json
 *.csv
 
 # Database
-#*.dump 
+*.dump 
 
 *.env
